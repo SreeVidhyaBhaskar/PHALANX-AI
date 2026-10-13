@@ -90,16 +90,14 @@ The following equations provide examples of the physical and numerical relations
 
 A simplified Beer–Lambert relationship is:
 
-\[
-I(r) = I_0 e^{-\alpha r}
-\]
+$$I(r) = I_0 e^{-\alpha r}$$
 
 Where:
 
-- \(I_0\): Initial intensity.
-- \(I(r)\): Intensity after propagation through the medium.
-- \(\alpha\): Atmospheric extinction coefficient.
-- \(r\): Propagation distance.
+- $I_0$: Initial intensity.
+- $I(r)$: Intensity after propagation through the medium.
+- $\alpha$: Atmospheric extinction coefficient.
+- $r$: Propagation distance.
 
 The coefficient and distance must use compatible units. This equation describes attenuation under a simplified propagation model and does not independently predict structural heating or material failure.
 
@@ -107,24 +105,18 @@ The coefficient and distance must use compatible units. This equation describes 
 
 The basic kinematic relationships are:
 
-\[
-\mathbf{v}(t) = \frac{d\mathbf{x}}{dt}
-\]
+$$\mathbf{v}(t) = \frac{d\mathbf{x}}{dt}$$
 
-\[
-\mathbf{a}(t) = \frac{d\mathbf{v}}{dt}
-\]
+$$\mathbf{a}(t) = \frac{d\mathbf{v}}{dt}$$
 
-\[
-\mathbf{j}(t) = \frac{d\mathbf{a}}{dt}
-\]
+$$\mathbf{j}(t) = \frac{d\mathbf{a}}{dt}$$
 
 Where:
 
-- \(\mathbf{x}\): Position vector.
-- \(\mathbf{v}\): Velocity vector.
-- \(\mathbf{a}\): Acceleration vector.
-- \(\mathbf{j}\): Jerk vector.
+- $\mathbf{x}$: Position vector.
+- $\mathbf{v}$: Velocity vector.
+- $\mathbf{a}$: Acceleration vector.
+- $\mathbf{j}$: Jerk vector.
 
 These quantities can be used to characterize trajectory smoothness and the dynamic behavior of a simulated vehicle.
 
@@ -132,18 +124,15 @@ These quantities can be used to characterize trajectory smoothness and the dynam
 
 A simplified logarithmic atmospheric boundary-layer wind profile is:
 
-\[
-U(z) = \frac{u_*}{\kappa}
-\ln\left(\frac{z-d}{z_0}\right)
-\]
+$$U(z) = \frac{u_*}{\kappa} \ln\left(\frac{z-d}{z_0}\right)$$
 
 Where:
 
-- \(U(z)\): Mean wind speed at height \(z\).
-- \(u_*\): Friction velocity.
-- \(\kappa\): von Kármán constant.
-- \(d\): Zero-plane displacement height.
-- \(z_0\): Surface roughness length.
+- $U(z)$: Mean wind speed at height $z$.
+- $u_*$: Friction velocity.
+- $\kappa$: von Kármán constant.
+- $d$: Zero-plane displacement height.
+- $z_0$: Surface roughness length.
 
 This approximation requires appropriate surface-layer assumptions and valid height inputs. It should not be treated as a universal atmospheric model.
 
@@ -151,25 +140,20 @@ This approximation requires appropriate surface-layer assumptions and valid heig
 
 For a simplified aerodynamic model:
 
-\[
-D = \frac{1}{2}\rho v^2 C_D A
-\]
+$$D = \frac{1}{2}\rho v^2 C_D A$$
 
-\[
-P_D = Dv
-\]
+$$P_D = D \cdot v$$
 
 Where:
 
-- \(D\): Aerodynamic drag force.
-- \(\rho\): Air density.
-- \(v\): Airspeed relative to the surrounding air.
-- \(C_D\): Drag coefficient.
-- \(A\): Reference area.
-- \(P_D\): Power associated with overcoming drag.
+- $D$: Aerodynamic drag force.
+- $\rho$: Air density.
+- $v$: Airspeed relative to the surrounding air.
+- $C_D$: Drag coefficient.
+- $A$: Reference area.
+- $P_D$: Power associated with overcoming drag.
 
 This is a simplified drag-power relationship, not a complete aircraft propulsion-power model.
-
 ---
 
 ## Project Structure
@@ -195,9 +179,6 @@ FlightSim-Agent/
 └── data/
     └── README.md
 ```
-
-This is a suggested structure. Keep only the files and modules that actually exist in your repository.
-
 ---
 
 ## Installation and Setup (Windows)
