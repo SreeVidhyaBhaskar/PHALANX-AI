@@ -1,14 +1,13 @@
-
-# PHALANX-AI: Autonomous Aerospace Trajectory Optimization Core
+# PHALANX-AI: Autonomous Counter-DEW & Trajectory Optimization Core
 
 ![License](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-brightgreen)
-![Framework](https://img.shields.io/badge/Framework-Streamlit-FF4B4B)
-![Domain](https://img.shields.io/badge/Domain-Aerospace%20Simulation-blueviolet)
+![Domain](https://img.shields.io/badge/Domain-Autonomous%20Defense%20%26%20Aerospace-red)
 
 ## Executive Summary
+**PHALANX-AI** is an agentic flight trajectory optimization platform designed for modern contested airspaces. Standard guidance planners optimize strictly for fuel efficiency and smooth pathing ($C^2$-continuous splines). However, in high-threat environments, smooth trajectories allow automated counter-measures—specifically High-Energy Lasers (HEL) and Directed Energy Weapons (DEW) like Israel's *Iron Beam*—to achieve steady target lock via Extended Kalman Filters (EKF).
 
-**PHALANX-AI** is an aerospace simulation and trajectory optimization platform designed to investigate flight-path planning, atmospheric uncertainty, trajectory smoothness, and energy efficiency in simulated environments.
+PHALANX-AI solves this vulnerability by deploying a **Regime-Switched Adversarial Kinematic Engine**. It injects high-frequency, non-polynomial micro-jitter ($\mathbf{j} = \frac{d\mathbf{a}}{dt} \ge 12\text{--}15 \text{ m/s}^3$) strictly within engagement zones to break EKF predictive convergence and exceed tracking gimbal bandwidth limits ($\approx 15 \text{ Hz}$). This smears the laser focal spot across the fuselage, keeping thermal dwell time below the $2.0\text{-second}$ melt-through threshold while preserving battery endurance along transit segments.
 
 The platform combines environmental data, numerical simulation, trajectory analysis, and interactive visualization in a unified application.
 
