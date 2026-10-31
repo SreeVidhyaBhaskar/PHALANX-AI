@@ -521,10 +521,8 @@ $$
 The percentage difference is:
 
 $$
-\boxed{
-\Delta\rho_{\%}=
-\frac{\rho_{dry}-\rho_{ma}}{\rho_{dry}}\times100
-}
+\Delta \rho_{\%} =
+\frac{\rho_{dry}-\rho_{ma}}{\rho_{dry}}\times 100
 $$
 
 This provides a comparison between the dry-air approximation and the moist-air mixture calculation.
