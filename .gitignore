@@ -1,0 +1,36 @@
+# Python virtual environment
+.venv/
+venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# IDE files
+.vscode/
+.idea/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# Test and coverage files
+.pytest_cache/
+.coverage
+htmlcov/
+# Development backups
+*_backup.py
+agent_v*_backup.py
+
+# Old application
+app.py
+# Pytest cache
+pytest_cache/
+# Root-level development experiments
+/test_*.py
+/list_models.py
