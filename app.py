@@ -1,374 +1,422 @@
+import json
 import streamlit as st
-import numpy as np
-import pandas as pd
-import plotly.graph_objects as go
-import requests
 
-# ==============================================================================
-# 1. LIVE GEOSPATIAL & ATMOSPHERIC DATA FETCHERS
-# ==============================================================================
+# ---------------------------------------------------------
+# PHALANX-AI: CIVILIAN ENVIRONMENTAL ENGINEERING AGENT
+# ---------------------------------------------------------
 
-def fetch_live_elevation(lat: float, lon: float) -> float:
-    """Fetches real-time ground elevation (meters above sea level) via Open-Elevation API."""
-    try:
-        url = f"https://api.open-elevation.com/api/v1/lookup?locations={lat},{lon}"
-        response = requests.get(url, timeout=3)
-        if response.status_code == 200:
-            data = response.json()
-            return float(data['results'][0]['elevation'])
-    except Exception:
-        pass
-    return 45.0  # Fallback default elevation (m)
+st.set_page_config(
+    page_title="PHALANX-AI | Engineering Agent",
+    page_icon="🌐",
+    layout="wide"
+)
 
-def fetch_live_wind(lat: float, lon: float, api_key: str = "") -> dict:
-    """Fetches live surface wind vectors (m/s) and direction using OpenWeather API."""
-    if api_key:
-        try:
-            url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={api_key}&units=metric"
-            res = requests.get(url, timeout=3).json()
-            speed = res['wind']['speed']
-            deg = res['wind']['deg']
-            rad = np.radians(deg)
-            wx = -speed * np.sin(rad)
-            wy = -speed * np.cos(rad)
-            return {"wx": round(wx, 2), "wy": round(wy, 2), "speed": speed, "source": "LIVE_OPENWEATHER_API"}
-        except Exception:
-            pass
-    return {"wx": -14.0, "wy": 6.5, "speed": 15.4, "source": "SIMULATED_ATMOSPHERE"}
-
-# ==============================================================================
-# 2. PHALANX KINEMATIC & DEW PHYSICAL ENGINE
-# ==============================================================================
-
-class PhalanxLiveEngine:
-    def __init__(self, lat: float, lon: float, owm_key: str = ""):
-        self.ground_alt = fetch_live_elevation(lat, lon)
-        self.wind_data = fetch_live_wind(lat, lon, owm_key)
-        
-        self.origin = np.array([0.0, 0.0, self.ground_alt + 15.0])
-        self.objective = np.array([3200.0, 3200.0, self.ground_alt + 40.0])
-        
-        self.dew_pos = np.array([1600.0, 1400.0, self.ground_alt + 5.0])
-        self.dew_range = 1750.0
-        self.dew_power = 100.0
-        
-        self.speed = 45.0
-        self.battery_wh = 600.0
-
-def compute_kinematics(waypoints, engine: PhalanxLiveEngine):
-    pts = []
-    for i in range(len(waypoints) - 1):
-        p1, p2 = np.array(waypoints[i]), np.array(waypoints[i+1])
-        dist = np.linalg.norm(p2 - p1)
-        steps = max(10, int(dist / 15.0))
-        for t in np.linspace(0, 1, steps):
-            pts.append(p1 + t * (p2 - p1))
-            
-    pts = np.array(pts)
-    dt = 0.12
-    
-    if len(pts) > 4:
-        vel = np.diff(pts, axis=0) / dt
-        acc = np.diff(vel, axis=0) / dt
-        jerk = np.diff(acc, axis=0) / dt
-        avg_jerk = float(np.mean(np.linalg.norm(jerk, axis=1)))
-    else:
-        avg_jerk = 0.5
-
-    gimbal_lag = round(0.12 * (avg_jerk ** 1.35), 2)
-    smear_factor = round(1.0 + (gimbal_lag / 1.0), 2)
-
-    max_dwell = 0.0
-    curr_dwell = 0.0
-    for pt in pts:
-        if np.linalg.norm(pt - engine.dew_pos) < engine.dew_range:
-            eff_tick = dt * (1.0 / max(1.0, smear_factor - 3.0))
-            curr_dwell += eff_tick
-            max_dwell = max(max_dwell, curr_dwell)
-        else:
-            curr_dwell = 0.0
-
-    total_wh = 0.0
-    wind_vec_surface = np.array([engine.wind_data['wx'], engine.wind_data['wy'], -1.5])
-    
-    for i in range(len(waypoints) - 1):
-        p1, p2 = waypoints[i], waypoints[i+1]
-        d = np.linalg.norm(p2 - p1)
-        if d == 0: continue
-        dir_vec = (p2 - p1) / d
-        
-        mean_alt = (p1[2] + p2[2]) / 2.0
-        alt_scale = np.log(max(10.0, mean_alt) / 0.1) / np.log(10.0 / 0.1)
-        wind_at_alt = wind_vec_surface * alt_scale
-        
-        airspeed = engine.speed + np.dot(wind_at_alt, dir_vec)
-        power_w = 290.0 + (0.028 * (airspeed ** 3))
-        if smear_factor > 2.0:
-            power_w += 115.0
-            
-        total_wh += (power_w * ((d / max(10.0, airspeed)) / 3600.0))
-
-    return {
-        "jerk": round(avg_jerk, 2),
-        "lag_cm": gimbal_lag,
-        "smear": smear_factor,
-        "dwell_s": round(max_dwell, 2),
-        "energy_wh": round(total_wh, 1),
-        "battery_pct": round(((engine.battery_wh - total_wh) / engine.battery_wh) * 100.0, 1)
-    }
-
-# ==============================================================================
-# 3. HIGH-CONTRAST TACTICAL INTERFACE
-# ==============================================================================
-
-st.set_page_config(page_title="PHALANX-AI // LIVE C2", layout="wide", initial_sidebar_state="expanded")
-
-# Ultra High-Contrast Tactical CSS Overhaul
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=JetBrains+Mono:wght@400;600;700&display=swap');
+/* Main application */
+.stApp {
+    background-color: #080D17;
+    color: #E8EDF5;
+}
 
-    /* Global Dark Canvas */
-    html, body, [class*="css"] {
-        font-family: 'JetBrains Mono', monospace !important;
-        background-color: #05070A !important;
-        color: #E2E8F0 !important;
-    }
-    
-    .stApp {
-        background-color: #05070A !important;
-    }
+/* Main content */
+section.main > div {
+    background-color: #080D17;
+}
 
-    /* Force Streamlit Top Bar to Dark */
-    header[data-testid="stHeader"] {
-        background-color: #05070A !important;
-    }
+/* Headings */
+h1, h2, h3, h4 {
+    color: #F1F5FC !important;
+}
 
-    /* Headings */
-    h1, h2, h3 {
-        font-family: 'Chakra Petch', sans-serif !important;
-        text-transform: uppercase !important;
-        color: #FFFFFF !important;
-        letter-spacing: 0.05em !important;
-    }
+/* All ordinary text and labels */
+p, label, span, div,
+.stMarkdown, .stCaption,
+[data-testid="stWidgetLabel"],
+[data-testid="stMarkdownContainer"] {
+    color: #D5DEEA;
+}
 
-    /* Metric HUD Blocks */
-    div[data-testid="stMetric"] {
-        background-color: #0D131D !important;
-        border: 1px solid #1E293B !important;
-        border-radius: 0px !important;
-        padding: 12px !important;
-    }
+/* Sidebar */
+section[data-testid="stSidebar"] {
+    background-color: #101827;
+}
 
-    div[data-testid="stMetricLabel"] {
-        font-family: 'Chakra Petch', sans-serif !important;
-        font-size: 11px !important;
-        color: #94A3B8 !important;
-        letter-spacing: 0.1em !important;
-    }
+section[data-testid="stSidebar"] * {
+    color: #DCE6F2 !important;
+}
 
-    div[data-testid="stMetricValue"] {
-        font-family: 'JetBrains Mono', monospace !important;
-        font-size: 22px !important;
-        font-weight: 700 !important;
-        color: #00E5FF !important;
-    }
+/* Text areas */
+.stTextArea textarea,
+textarea {
+    background-color: #162235 !important;
+    color: #F1F5FC !important;
+    border: 1px solid #40536D !important;
+    caret-color: #FFFFFF !important;
+}
 
-    /* HIGH-CONTRAST SIDEBAR OVERHAUL */
-    section[data-testid="stSidebar"] {
-        background-color: #0B0F17 !important;
-        border-right: 1px solid #1E293B !important;
-    }
+.stTextArea textarea::placeholder {
+    color: #AAB8CA !important;
+}
 
-    /* Sidebar Labels, Inputs, & Paragraphs */
-    section[data-testid="stSidebar"] label, 
-    section[data-testid="stSidebar"] p, 
-    section[data-testid="stSidebar"] div {
-        color: #F8FAFC !important; /* Pure White High Contrast */
-        font-size: 12px !important;
-    }
+/* Number inputs and other input fields */
+.stNumberInput input,
+.stTextInput input {
+    background-color: #162235 !important;
+    color: #FFFFFF !important;
+    border: 1px solid #40536D !important;
+}
 
-    /* Input Boxes in Sidebar */
-    section[data-testid="stSidebar"] input {
-        background-color: #16202C !important;
-        color: #FFFFFF !important;
-        border: 1px solid #334155 !important;
-        border-radius: 0px !important;
-        font-family: 'JetBrains Mono', monospace !important;
-    }
+/* Sliders and select boxes */
+.stSelectbox div[data-baseweb="select"] {
+    background-color: #162235;
+    color: #FFFFFF;
+}
 
-    /* Action Button */
-    div.stButton > button {
-        background-color: #00E5FF !important;
-        color: #05070A !important;
-        font-family: 'Chakra Petch', sans-serif !important;
-        font-weight: 700 !important;
-        border-radius: 0px !important;
-        border: none !important;
-        width: 100% !important;
-        padding: 12px !important;
-        letter-spacing: 0.1em !important;
-    }
+/* Buttons */
+.stButton button {
+    background-color: #FF454D;
+    color: #FFFFFF !important;
+    border: none;
+    font-weight: 700;
+    border-radius: 7px;
+}
 
-    div.stButton > button:hover {
-        background-color: #38BDF8 !important;
-        color: #000000 !important;
-    }
+.stButton button:hover {
+    background-color: #E93640;
+    color: #FFFFFF !important;
+}
 
-    /* HUD Headers */
-    .hud-header {
-        border-bottom: 1px solid #1E293B;
-        padding-bottom: 6px;
-        margin-bottom: 12px;
-        font-family: 'Chakra Petch', sans-serif;
-        font-size: 12px;
-        color: #00E5FF !important; /* Bright Cyan Section Titles */
-        letter-spacing: 0.15em;
-        font-weight: 700;
-    }
+/* Metric cards */
+.metric-card {
+    background-color: #111D2D;
+    border: 1px solid #40536D;
+    padding: 16px;
+    border-radius: 10px;
+    color: #F1F5FC;
+}
 
-    /* High Visibility Info Card */
-    div.stAlert {
-        background-color: #0D131D !important;
-        border: 1px solid #00E5FF !important;
-        color: #00E5FF !important;
-        border-radius: 0px !important;
-    }
+/* Expanders */
+[data-testid="stExpander"] {
+    background-color: #111D2D;
+    border: 1px solid #34465E;
+}
+
+/* Code and JSON output */
+.stCode, pre, code {
+    background-color: #111D2D !important;
+    color: #DCEBFF !important;
+}
+
+/* Dividers */
+hr {
+    border-color: #34465E;
+}
 </style>
 """, unsafe_allow_html=True)
 
-# Top Bar Header
-col_h1, col_h2 = st.columns([3, 1])
-with col_h1:
-    st.markdown("<h1 style='margin:0; padding:0; font-size: 26px; color: #FFFFFF;'>PHALANX // LIVE OPERATIONAL C2</h1>", unsafe_allow_html=True)
-    st.markdown("<div style='font-size: 11px; color: #94A3B8; letter-spacing: 0.15em;'>DYNAMIC GEOSPATIAL & ATMOSPHERIC SYNC CORE</div>", unsafe_allow_html=True)
-with col_h2:
-    st.markdown("<div style='text-align: right; font-size: 12px; color: #00E5FF; font-family: \"Chakra Petch\"; font-weight:700;'>[SYS_ONLINE] // GPS_SYNC</div>", unsafe_allow_html=True)
+# Import the actual agent, without preventing the UI
+# from opening if configuration is unavailable.
+try:
+    from agent import run_agent
+    AGENT_AVAILABLE = True
+    AGENT_ERROR = None
+except Exception as error:
+    AGENT_AVAILABLE = False
+    AGENT_ERROR = str(error)
 
-st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
 
-# Sidebar Console
-st.sidebar.markdown("<div class='hud-header'>OPERATIONAL THEATER (GPS)</div>", unsafe_allow_html=True)
-lat_val = st.sidebar.number_input("LATITUDE", value=12.9716, format="%.4f")
-lon_val = st.sidebar.number_input("LONGITUDE", value=77.5946, format="%.4f")
-owm_key = st.sidebar.text_input("OPENWEATHER API KEY (OPTIONAL)", type="password")
+# ---------------------------------------------------------
+# HEADER
+# ---------------------------------------------------------
 
-st.sidebar.markdown("<div class='hud-header' style='margin-top:15px;'>SYSTEM CONTROLS</div>", unsafe_allow_html=True)
-evasion_intensity = st.sidebar.slider("JERK SCALING (da/dt)", 0.5, 2.0, 1.3, 0.1)
+st.title("PHALANX-AI")
+st.caption(
+    "AGENTIC ENVIRONMENTAL ENGINEERING "
+    "| LLM-DRIVEN TOOL ORCHESTRATION"
+)
 
-# Fetch Engine Instance
-engine = PhalanxLiveEngine(lat_val, lon_val, owm_key)
+st.markdown("""
+PHALANX-AI is an engineering assessment agent that uses
+a large language model to select environmental data tools,
+execute engineering calculations and inspect validation
+results before producing an assessment.
+""")
 
-st.sidebar.markdown("<div class='hud-header' style='margin-top:15px;'>LIVE TELEMETRY SYNC</div>", unsafe_allow_html=True)
-st.sidebar.markdown(f"<p style='color:#FFFFFF; margin:2px 0;'>GROUND ELEV : <b>{engine.ground_alt:.1f} m</b> (MSL)</p>", unsafe_allow_html=True)
-st.sidebar.markdown(f"<p style='color:#FFFFFF; margin:2px 0;'>WIND SOURCE : <b>{engine.wind_data['source']}</b></p>", unsafe_allow_html=True)
-st.sidebar.markdown(f"<p style='color:#FFFFFF; margin:2px 0;'>SURFACE WIND : <b>{engine.wind_data['speed']} m/s</b></p>", unsafe_allow_html=True)
+st.divider()
 
-st.sidebar.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
 
-if st.sidebar.button("EXECUTE TRAJECTORY OPTIMIZATION"):
-    # 1. Direct Vector
-    base_wps = [engine.origin, engine.objective]
-    base_m = compute_kinematics(base_wps, engine)
-    
-    # 2. Optimized Vector
-    jerk_val = evasion_intensity * 140.0
-    opt_wps = [
-        engine.origin,
-        np.array([950.0, 500.0, engine.ground_alt + 35.0]),
-        np.array([1500.0, 1200.0, engine.ground_alt + 25.0 + (jerk_val * 0.12)]),
-        np.array([2000.0, 1700.0, engine.ground_alt + 55.0 - (jerk_val * 0.08)]),
-        np.array([2700.0, 2600.0, engine.ground_alt + 60.0]),
-        engine.objective
-    ]
-    opt_m = compute_kinematics(opt_wps, engine)
+# ---------------------------------------------------------
+# SIDEBAR
+# ---------------------------------------------------------
 
-    # Top HUD Banner
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("GIMBAL LAG", f"{opt_m['lag_cm']} CM", delta=f"+{round(opt_m['lag_cm'] - base_m['lag_cm'], 2)} CM")
-    m2.metric("SPOT SMEAR", f"{opt_m['smear']}X", delta="EKF UNLOCKED")
-    m3.metric("LASER DWELL", f"{opt_m['dwell_s']} SEC", delta=f"{opt_m['dwell_s'] - base_m['dwell_s']:.1f} S")
-    m4.metric("BATTERY HORIZON", f"{opt_m['battery_pct']}%", delta=f"-{opt_m['energy_wh']} Wh")
+with st.sidebar:
+    st.header("Assessment Configuration")
 
-    st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
+    latitude = st.number_input(
+        "Latitude",
+        min_value=-90.0,
+        max_value=90.0,
+        value=13.0827,
+        format="%.4f"
+    )
 
-    c_left, c_right = st.columns([3, 2])
+    longitude = st.number_input(
+        "Longitude",
+        min_value=-180.0,
+        max_value=180.0,
+        value=80.2707,
+        format="%.4f"
+    )
 
-    with c_left:
-        st.markdown("<div class='hud-header'>// 3D BATTLESPACE THREAT CANVAS (DYNAMIC MSL ALTITUDE)</div>", unsafe_allow_html=True)
-        
-        fig = go.Figure()
+    max_steps = st.slider(
+        "Maximum orchestration rounds",
+        min_value=1,
+        max_value=10,
+        value=5
+    )
 
-        # DEW Threat Dome
-        u = np.linspace(0, 2*np.pi, 30)
-        v = np.linspace(0, np.pi/2, 15)
-        x_dew = engine.dew_pos[0] + engine.dew_range * np.outer(np.cos(u), np.sin(v))
-        y_dew = engine.dew_pos[1] + engine.dew_range * np.outer(np.sin(u), np.sin(v))
-        z_dew = engine.dew_pos[2] + engine.dew_range * np.outer(np.ones(np.size(u)), np.cos(v))
-        
-        fig.add_trace(go.Surface(x=x_dew, y=y_dew, z=z_dew, opacity=0.12, colorscale=[[0, '#FF0055'], [1, '#FF0055']], showscale=False, name="HEL Threat"))
+    st.divider()
 
-        # Direct Vector
-        fig.add_trace(go.Scatter3d(
-            x=[engine.origin[0], engine.objective[0]], y=[engine.origin[1], engine.objective[1]], z=[engine.origin[2], engine.objective[2]],
-            mode='lines', line=dict(color='#FF0055', width=2, dash='dash'), name='Direct Vector'
-        ))
+    st.subheader("Registered Engineering Tools")
 
-        # Phalanx Certified Vector
-        w_arr = np.array(opt_wps)
-        fig.add_trace(go.Scatter3d(
-            x=w_arr[:, 0], y=w_arr[:, 1], z=w_arr[:, 2],
-            mode='lines+markers', line=dict(color='#00E5FF', width=5),
-            marker=dict(size=4, color='#05070A', symbol='diamond', line=dict(color='#00E5FF', width=2)), name='Phalanx Vector'
-        ))
+    st.markdown("""
+    - **get_weather** — model-based atmospheric data
+    - **get_elevation** — static terrain elevation
+    - **calculate_air_density** — moist-air engineering calculation
+    """)
 
-        fig.update_layout(
-            template="plotly_dark", paper_bgcolor='#05070A', plot_bgcolor='#05070A',
-            scene=dict(
-                xaxis=dict(backgroundcolor='#05070A', gridcolor='#16202C', title='X (M)'),
-                yaxis=dict(backgroundcolor='#05070A', gridcolor='#16202C', title='Y (M)'),
-                zaxis=dict(backgroundcolor='#05070A', gridcolor='#16202C', title='ALT MSL (M)'),
-                camera=dict(eye=dict(x=1.3, y=-1.3, z=1.0))
-            ),
-            margin=dict(l=0, r=0, b=0, t=0), height=520
-        )
-        st.plotly_chart(fig, use_container_width="stretch")
+    st.divider()
 
-    with c_right:
-        st.markdown("<div class='hud-header'>// LIVE GEOSPATIAL & EXECUTION MATRIX</div>", unsafe_allow_html=True)
-        
-        st.markdown(f"""
-        <div style='background: #0D131D; border: 1px solid #1E293B; padding: 12px; margin-bottom: 10px;'>
-            <div style='font-size: 11px; color: #00E5FF; font-weight:700;'>LIVE TELEMETRY SYNC</div>
-            <div style='font-size: 12px; color: #FFFFFF; margin-top: 4px;'>GPS: [{lat_val}, {lon_val}]</div>
-            <div style='font-size: 11px; color: #CBD5E1; margin-top: 2px;'>
-                Ground MSL: {engine.ground_alt} m | Wind: {engine.wind_data['speed']} m/s
-            </div>
-        </div>
+    st.caption("Model: Gemini 3.6 Flash")
+    st.caption("Execution: Bounded tool-calling loop")
+    st.caption("Validation: Independent Python checks")
 
-        <div style='background: #0D131D; border: 1px solid #1E293B; padding: 12px; margin-bottom: 10px;'>
-            <div style='font-size: 11px; color: #FF0055; font-weight:700;'>PHASE 01 // DIRECT VECTOR AUDIT</div>
-            <div style='font-size: 12px; color: #FF0055; margin-top: 4px;'>STATUS: CRITICAL_HAZARD</div>
-            <div style='font-size: 11px; color: #CBD5E1; margin-top: 2px;'>
-                Laser Dwell: {base_m['dwell_s']}s (Limit: 2.0s)
-            </div>
-        </div>
 
-        <div style='background: #0D131D; border: 1px solid #1E293B; padding: 12px; margin-bottom: 12px;'>
-            <div style='font-size: 11px; color: #00E5FF; font-weight:700;'>PHASE 02 // PARETO CLEARANCE</div>
-            <div style='font-size: 12px; color: #00E5FF; margin-top: 4px;'>STATUS: CLEARANCE_CERTIFIED</div>
-            <div style='font-size: 11px; color: #CBD5E1; margin-top: 2px;'>
-                Laser Dwell Reduced: {opt_m['dwell_s']}s<br>
-                Battery Reserve: {opt_m['battery_pct']}%
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+# ---------------------------------------------------------
+# REQUEST INTERFACE
+# ---------------------------------------------------------
 
-        df_exp = pd.DataFrame(opt_wps, columns=["X_M", "Y_M", "ALT_MSL_M"])
-        st.download_button(
-            label="EXPORT CERTIFIED FLIGHT PLAN (CSV)",
-            data=df_exp.to_csv(index=False).encode('utf-8'),
-            file_name='phalanx_live_geospatial_trajectory.csv', mime='text/csv'
-        )
-else:
-    st.info("ENTER GPS COORDINATES IN SIDEBAR AND CLICK 'EXECUTE TRAJECTORY OPTIMIZATION'.")
+st.subheader("Environmental Engineering Assessment")
+
+default_request = f"""
+Perform a civilian environmental engineering assessment
+for the following coordinates:
+
+Latitude: {latitude}
+Longitude: {longitude}
+
+Determine the relevant atmospheric conditions.
+
+Retrieve model-based weather data and terrain elevation
+where appropriate.
+
+Use the actual retrieved temperature, absolute surface
+pressure and relative humidity to calculate moist-air
+density.
+
+Compare moist-air density with dry-air density.
+
+Explain:
+1. Retrieved environmental conditions.
+2. Engineering calculations and assumptions.
+3. Validation results.
+4. Environmental significance.
+5. Data sources and limitations.
+
+Do not invent measurements or substitute missing data.
+Clearly distinguish retrieved data, calculated values
+and engineering interpretation.
+"""
+
+request = st.text_area(
+    "Assessment instructions",
+    value=default_request,
+    height=230
+)
+
+run_button = st.button(
+    "RUN PHALANX ENGINEERING ASSESSMENT",
+    type="primary",
+    use_container_width=True
+)
+
+
+# ---------------------------------------------------------
+# EXECUTION
+# ---------------------------------------------------------
+
+if run_button:
+
+    if not AGENT_AVAILABLE:
+        st.error("The engineering agent could not be loaded.")
+        st.code(AGENT_ERROR)
+
+    elif not request.strip():
+        st.warning("Enter an assessment request.")
+
+    else:
+        with st.spinner(
+            "PHALANX is planning and executing its assessment..."
+        ):
+            try:
+                result = run_agent(
+                    request,
+                    max_steps=max_steps
+                )
+
+                st.session_state["phalanx_result"] = result
+
+            except Exception as error:
+                st.session_state["phalanx_error"] = str(error)
+                st.session_state.pop("phalanx_result", None)
+
+
+# ---------------------------------------------------------
+# RESULTS
+# ---------------------------------------------------------
+
+if "phalanx_error" in st.session_state:
+
+    st.error("Agent execution failed.")
+    st.code(st.session_state["phalanx_error"])
+
+    st.info(
+        "Check API availability, quota, credentials and "
+        "network connectivity. An API failure is not a "
+        "successful engineering assessment."
+    )
+
+    if st.button("Clear error"):
+        del st.session_state["phalanx_error"]
+        st.rerun()
+
+
+if "phalanx_result" in st.session_state:
+
+    result = st.session_state["phalanx_result"]
+
+    st.divider()
+    st.subheader("Assessment Results")
+
+    status = result.get("status", "UNKNOWN")
+
+    if status == "COMPLETED":
+        st.success("Assessment completed.")
+
+    elif status == "VALIDATION_REJECTED":
+        st.error("Engineering validation rejected a result.")
+
+    else:
+        st.warning(f"Agent status: {status}")
+
+    st.markdown("### Engineering Assessment")
+
+    st.markdown(
+        result.get("answer", "No final assessment returned.")
+    )
+
+    # ---------------------------------------------
+    # EXECUTION TRACE
+    # ---------------------------------------------
+
+    st.divider()
+    st.subheader("Agent Execution Trace")
+
+    steps = result.get("steps", [])
+
+    if steps:
+
+        for index, step in enumerate(steps, start=1):
+
+            with st.expander(
+                f"Round {step.get('step', index)} | "
+                f"{step.get('tool', 'Unknown tool')}"
+            ):
+
+                st.markdown("**Tool arguments**")
+                st.json(step.get("arguments", {}))
+
+                st.markdown("**Execution status**")
+                st.write(step.get("result_status", "Unknown"))
+
+                validation_status = step.get(
+                    "validation_status",
+                    "NOT_CHECKED"
+                )
+
+                if validation_status == "PASSED":
+                    st.success("Validation: PASSED")
+
+                elif validation_status == "REJECTED":
+                    st.error("Validation: REJECTED")
+
+                else:
+                    st.info(
+                        f"Validation: {validation_status}"
+                    )
+
+                if "validation" in step:
+                    st.json(step["validation"])
+
+                if "tool_result" in step:
+                    st.markdown("**Tool result**")
+                    st.json(step["tool_result"])
+
+    else:
+        st.info("No tools were executed.")
+
+    # ---------------------------------------------
+    # REJECTION RECORDS
+    # ---------------------------------------------
+
+    rejected = result.get("rejected_validations", [])
+
+    if rejected:
+        st.divider()
+        st.subheader("Rejected Engineering Results")
+        st.json(rejected)
+
+    # ---------------------------------------------
+    # SUMMARY
+    # ---------------------------------------------
+
+    st.divider()
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric(
+        "Agent status",
+        status
+    )
+
+    col2.metric(
+        "Tool calls",
+        result.get("tool_calls", len(steps))
+    )
+
+    col3.metric(
+        "Execution rounds",
+        len(set(s.get("step") for s in steps))
+    )
+
+    st.download_button(
+        "Download execution record (JSON)",
+        data=json.dumps(result, indent=4, default=str),
+        file_name="phalanx_execution_record.json",
+        mime="application/json",
+        use_container_width=True
+    )
+
+
+# ---------------------------------------------------------
+# FOOTER
+# ---------------------------------------------------------
+
+st.divider()
+
+st.caption(
+    "PHALANX-AI | Environmental Engineering Agent | "
+    "Model-based weather data is not direct sensor telemetry. "
+    "Engineering outputs require appropriate domain review."
+)
